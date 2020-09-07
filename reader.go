@@ -59,8 +59,9 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	return
 }
 
-// ReadBits reads n bits and returns them as the lowest n bits of u.
-func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
+// ReadNBits reads n bits and returns them as the lowest n bits of u.
+func (r *Reader) ReadNBits(nOrig uint8) (u uint64, nReturned uint8, err error) {
+	n := nOrig
 	// Some optimization, frequent cases
 	if n < r.bits {
 		// cache has all needed bits, and there are some extra which will be left in cache
@@ -68,6 +69,8 @@ func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
 		u = uint64(r.cache >> shift)
 		r.cache &= 1<<shift - 1
 		r.bits = shift
+
+		nReturned = nOrig
 		return
 	}
 
@@ -76,12 +79,13 @@ func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
 		if r.bits > 0 {
 			u = uint64(r.cache)
 			n -= r.bits
+			// r.bits = 0
 		}
 		// Read whole bytes
 		for n >= 8 {
 			b, err2 := r.in.ReadByte()
 			if err2 != nil {
-				return 0, err2
+				return 0, 0, err2
 			}
 			u = u<<8 + uint64(b)
 			n -= 8
@@ -89,7 +93,7 @@ func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
 		// Read last fraction, if any
 		if n > 0 {
 			if r.cache, err = r.in.ReadByte(); err != nil {
-				return u, err
+				return u, nOrig - n, err
 			}
 			shift := 8 - n
 			u = u<<n + uint64(r.cache>>shift)
@@ -98,12 +102,18 @@ func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
 		} else {
 			r.bits = 0
 		}
-		return u, nil
+		return u, nOrig, nil
 	}
 
 	// cache has exactly as many as needed
 	r.bits = 0 // no need to clear cache, will be overwritten on next read
-	return uint64(r.cache), nil
+	return uint64(r.cache), nOrig, nil
+}
+
+// ReadBits reads n bits and returns them as the lowest n bits of u.
+func (r *Reader) ReadBits(n uint8) (u uint64, err error) {
+	u, _, err = r.ReadNBits(n)
+	return
 }
 
 // ReadByte reads the next 8 bits and returns them as a byte.
@@ -173,7 +183,7 @@ func (r *Reader) TryRead(p []byte) (n int) {
 //
 // If there was a previous TryError, it does nothing. Else it calls ReadBits(),
 // returns the data it provides and stores the error in the TryError field.
-func (r *Reader) TryReadBits(n uint8) (u uint64) {
+func (r *Reader) TryReadBits(n uint8) (u uint64, nReturned uint8) {
 	if r.TryError == nil {
 		u, r.TryError = r.ReadBits(n)
 	}
