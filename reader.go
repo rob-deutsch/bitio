@@ -79,7 +79,7 @@ func (r *Reader) ReadNBits(nOrig uint8) (u uint64, nReturned uint8, err error) {
 		if r.bits > 0 {
 			u = uint64(r.cache)
 			n -= r.bits
-			// r.bits = 0
+			r.bits = 0
 		}
 		// Read whole bytes
 		for n >= 8 {
